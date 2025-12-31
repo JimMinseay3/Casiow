@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv/
+
+# Logs
+email_sender.log
+*.log
+
+# Data files
+recipients.xlsx
+email_recipients.json
+
+# Environment variables
+.env
+
+# IDE configurations
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Windows
+Thumbs.db
+.DS_Store
