@@ -7,10 +7,11 @@ __pycache__/
 .venv/
 
 # Logs
-email_sender.log
+logs/
 *.log
 
 # Data files
+data/
 recipients.xlsx
 email_recipients.json
 
@@ -26,3 +27,10 @@ email_recipients.json
 # Windows
 Thumbs.db
 .DS_Store
+
+# Project reports
+PROJECT_REPORT.md
+COMPLETION_REPORT.md
+
+# Virtual environment
+venv/
