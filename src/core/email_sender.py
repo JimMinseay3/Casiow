@@ -1,10 +1,12 @@
 import smtplib
 import time
+import os
+import mimetypes
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.application import MIMEApplication
+from email.mime.base import MIMEBase
+from email import encoders
 from email.header import Header
-import os
 from src.utils.logger import setup_logger
 
 class EmailSender:
@@ -12,6 +14,38 @@ class EmailSender:
         self.config = config
         self.logger = setup_logger()
     
+    def _create_attachment(self, file_path):
+        """创建附件对象，自动识别MIME类型并处理中文文件名"""
+        try:
+            file_name = os.path.basename(file_path)
+            # 自动识别 MIME 类型
+            ctype, encoding = mimetypes.guess_type(file_path)
+            if ctype is None or encoding is not None:
+                # 无法识别或有额外编码时，使用通用的二进制流
+                ctype = 'application/octet-stream'
+            
+            maintype, subtype = ctype.split('/', 1)
+            
+            with open(file_path, 'rb') as fp:
+                attachment = MIMEBase(maintype, subtype)
+                attachment.set_payload(fp.read())
+                
+            # 编码内容
+            encoders.encode_base64(attachment)
+            
+            # 处理中文文件名兼容性 (RFC 2231/RFC 2047)
+            # 现代邮件客户端（包括手机端）对 Header 编码支持较好
+            encoded_filename = Header(file_name, 'utf-8').encode()
+            attachment.add_header(
+                'Content-Disposition', 
+                'attachment', 
+                filename=encoded_filename
+            )
+            return attachment
+        except Exception as e:
+            self.logger.error(f"创建附件对象失败: {file_path}, 错误: {e}")
+            return None
+
     def send(self, recipient_info):
         """发送单封邮件（包含所有附件）"""
         try:
@@ -19,7 +53,7 @@ class EmailSender:
             # 创建邮件对象
             msg = MIMEMultipart()
             
-            # 正确设置 From 头部（修复 RFC5322 格式问题）
+            # 正确设置 From 头部
             sender_name = Header(self.config.SENDER_NAME, 'utf-8').encode()
             msg['From'] = f"{sender_name} <{self.config.SENDER}>"
             
@@ -35,19 +69,12 @@ class EmailSender:
                     self.logger.warning(f"附件不存在，跳过: {file_path}")
                     continue
                 
-                try:
-                    file_name = os.path.basename(file_path)
-                    with open(file_path, 'rb') as file:
-                        attachment = MIMEApplication(file.read(), _subtype="octet-stream")
-                        attachment.add_header('Content-Disposition', 'attachment', filename=file_name)
-                        msg.attach(attachment)
-                    
-                    self.logger.info(f"已添加附件: {file_name}")
-                except Exception as e:
-                    self.logger.error(f"添加附件失败: {file_path}, 错误: {e}")
+                attachment = self._create_attachment(file_path)
+                if attachment:
+                    msg.attach(attachment)
+                    self.logger.info(f"已添加附件: {os.path.basename(file_path)}")
             
             # 发送邮件
-            # 根据端口号选择合适的连接方式
             if self.config.SMTP_PORT == 465:
                 # SSL连接
                 with smtplib.SMTP_SSL(self.config.SMTP_SERVER, self.config.SMTP_PORT) as server:
@@ -98,7 +125,7 @@ class EmailSender:
                     msg['To'] = recipient_info['email']
                     msg['Subject'] = f"{recipient_info['title']} - {file_name}"
                     
-                    # 添加邮件正文
+                    # 添加正文
                     content = f"{recipient_info['content']}\n\n附件: {file_name}"
                     msg.attach(MIMEText(content, 'plain', 'utf-8'))
                     
@@ -106,9 +133,8 @@ class EmailSender:
                     if not os.path.exists(attachment):
                         raise FileNotFoundError(f"附件不存在: {attachment}")
                     
-                    with open(attachment, 'rb') as file:
-                        part = MIMEApplication(file.read(), _subtype="octet-stream")
-                        part.add_header('Content-Disposition', 'attachment', filename=file_name)
+                    part = self._create_attachment(attachment)
+                    if part:
                         msg.attach(part)
                     
                     # 发送邮件

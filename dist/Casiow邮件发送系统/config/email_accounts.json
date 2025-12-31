@@ -1,0 +1,16 @@
+{
+  "wecom": {
+    "SMTP_SERVER": "smtp.exmail.qq.com",
+    "SMTP_PORT": 465,
+    "SENDER": "jiaoyizhuli@ysgjzbfwyxgs1.wecom.work",
+    "PASSWORD": "XLju85xYtKNQJQtg",
+    "SENDER_NAME": "交易助理"
+  },
+  "hualiang": {
+    "SMTP_SERVER": "mail.hualiang.com.hk",
+    "SMTP_PORT": 25,
+    "SENDER": "hlicl@hualiang.com.hk",
+    "PASSWORD": "Hc@3619",
+    "SENDER_NAME": "hlicl@hualiang.com.hk"
+  }
+}
