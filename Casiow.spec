@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('src', 'src'), ('config/email_accounts.json', 'config'), ('docs/README_OPTIMIZATION.md', 'docs'), ('data', 'data')],
+    datas=[('src', 'src'), ('config/email_accounts.json', 'config'), ('docs/README_OPTIMIZATION.md', 'docs'), ('data', 'data'), ('resources', 'resources')],
     hiddenimports=[
         'json', 'os', 'sys', 'time', 'tkinter', 'tkinter.messagebox',
         'smtplib', 'email.mime.multipart', 'email.mime.text',
@@ -38,7 +38,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['resources/Casiow.ico'],
+    icon=['resources/Casiow_128.ico'],
 )
 coll = COLLECT(
     exe,

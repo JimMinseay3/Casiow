@@ -17,9 +17,10 @@ class SendPoolItem:
     
     def __init__(self, recipients: List[Dict], attachments: List[str], account_config: Dict):
         self.id = int(time.time() * 1000000) % 1000000000  # 生成唯一ID
-        self.recipients = recipients
-        self.attachments = attachments
-        self.account_config = account_config
+        # 深拷贝数据，防止外部修改或清空导致记录丢失
+        self.recipients = [r.copy() for r in recipients]
+        self.attachments = list(attachments)
+        self.account_config = dict(account_config)
         self.status = "pending"  # pending, sending, completed, failed
         self.created_time = datetime.now()
         self.start_time: Optional[datetime] = None
@@ -124,8 +125,9 @@ class SendPool:
                             else:
                                 item.fail_count += 1
                                 item.error_messages.append({
-                                    'email': recipient['email'],
-                                    'error': f"发送失败"
+                                    'recipient': recipient['email'],
+                                    'error': f"发送失败",
+                                    'timestamp': datetime.now().isoformat()
                                 })
                             # 添加发送间隔
                             time.sleep(config.SEND_INTERVAL)
@@ -143,12 +145,50 @@ class SendPool:
                     item.status = "failed"
                     item.error_message = str(e)
                     item.error_messages.append({
-                        'email': 'unknown',
-                        'error': str(e)
+                        'recipient': 'unknown',
+                        'error': str(e),
+                        'timestamp': datetime.now().isoformat()
                     })
                 
                 # 更新任务结束时间
                 item.end_time = datetime.now()
+                
+                # 统一日志格式，记录详细任务信息
+                try:
+                    import os
+                    log_content = []
+                    log_content.append("\n" + "=" * 60)
+                    log_content.append(f"邮件发送任务记录 - 任务 ID: {item.id}")
+                    log_content.append(f"完成状态: {item.status}")
+                    log_content.append(f"统计信息: 总数 {len(item.recipients)}, 成功 {item.success_count}, 失败 {item.fail_count}")
+                    log_content.append(f"时间: {item.start_time.strftime('%Y-%m-%d %H:%M:%S') if item.start_time else '未知'} -> {item.end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                    if item.attachments:
+                        log_content.append("-" * 20)
+                        log_content.append("附件列表:")
+                        for i, attach in enumerate(item.attachments):
+                            log_content.append(f"  {i+1}. {os.path.basename(attach)}")
+                            
+                    if item.recipients:
+                        log_content.append("-" * 20)
+                        log_content.append("收件人列表:")
+                        for i, recipient in enumerate(item.recipients):
+                            email = recipient.get('email', '未知')
+                            title = recipient.get('title', '无主题')
+                            log_content.append(f"  {i+1}. {email} (主题: {title})")
+                            
+                    if item.error_messages:
+                        log_content.append("-" * 20)
+                        log_content.append("失败详情:")
+                        for err in item.error_messages:
+                            log_content.append(f"  - {err.get('recipient', '未知')}: {err.get('error', '未知错误')}")
+                    
+                    log_content.append("=" * 60 + "\n")
+                    
+                    # 使用 logger 记录，这会自动触发 DaySeparatorHandler 的两行间隔逻辑
+                    self.logger.info("\n".join(log_content))
+                except Exception as log_err:
+                    self.logger.error(f"记录任务详细日志失败: {log_err}")
                 
                 # 如果不再需要处理更多任务，则退出循环
                 if not self.processing:

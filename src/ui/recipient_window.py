@@ -131,18 +131,16 @@ class RecipientInputWindow:
         # 按钮框架
         contact_button_frame = ttk.Frame(contact_frame)
         contact_button_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=0)
-        contact_button_frame.grid_columnconfigure(0, weight=1)
-        contact_button_frame.grid_columnconfigure(1, weight=1)
-        contact_button_frame.grid_columnconfigure(2, weight=1)
+        
+        # 设置两列等宽
+        contact_button_frame.columnconfigure(0, weight=1)
+        contact_button_frame.columnconfigure(1, weight=1)
         
         # 新建分组按钮
         ttk.Button(contact_button_frame, text="新建分组", command=self.create_new_group).grid(row=0, column=0, sticky="ew", padx=(0, 2), pady=0)
         
         # 新建联系人按钮
-        ttk.Button(contact_button_frame, text="新建联系人", command=self.create_new_recipient).grid(row=0, column=1, sticky="ew", padx=(2, 2), pady=0)
-        
-        # 删除选中按钮
-        ttk.Button(contact_button_frame, text="删除选中", command=self.delete_saved_recipient).grid(row=0, column=2, sticky="ew", padx=(2, 0), pady=0)
+        ttk.Button(contact_button_frame, text="新建联系人", command=self.create_new_recipient).grid(row=0, column=1, sticky="ew", padx=(2, 0), pady=0)
         
         # 联系人树形视图
         self.contact_tree = ttk.Treeview(contact_frame)
@@ -166,6 +164,12 @@ class RecipientInputWindow:
         self.contact_tree.bind("<<TreeviewSelect>>", self.on_contact_tree_select)
         self.contact_tree.bind("<Double-1>", self.on_contact_tree_double_click)
         self.contact_tree.bind("<Button-3>", self.on_contact_tree_right_click)  # 右键菜单
+        
+        # 绑定拖拽事件
+        self.contact_tree.bind("<ButtonPress-1>", self.on_drag_start)
+        self.contact_tree.bind("<B1-Motion>", self.on_drag_motion)
+        self.contact_tree.bind("<ButtonRelease-1>", self.on_drag_release)
+        self.drag_data = {"item": None, "y": 0}
         
         # 中间附件管理区域
         attachment_frame = ttk.LabelFrame(self.main_frame, text="附件管理")
@@ -244,9 +248,6 @@ class RecipientInputWindow:
         self.recipient_tree.configure(yscrollcommand=recipient_tree_scrollbar.set)
         self.recipient_tree.grid(row=0, column=0, sticky="nsew", padx=(5, 0), pady=5)
         recipient_tree_scrollbar.grid(row=0, column=1, sticky="ns", padx=(0, 5), pady=5)
-        
-        # 删除选中按钮
-        ttk.Button(recipient_frame, text="删除选中", command=self.delete_selected).grid(row=1, column=0, sticky="w", padx=5, pady=(0, 5))
         
         # 底部按钮区域
         bottom_frame = ttk.Frame(self.root)
@@ -401,44 +402,96 @@ class RecipientInputWindow:
             print(f"刷新发送池状态失败: {e}")
 
     def export_tasks(self):
-        """导出任务列表到文件"""
+        """导出任务列表到TXT文件"""
         try:
-            import json
             from datetime import datetime
             
             # 获取所有任务
             items = self.send_pool.get_all_items()
+            if not items:
+                messagebox.showinfo("提示", "当前没有发送任务可以导出")
+                return
             
-            # 转换为可序列化的格式
-            export_data = []
-            for item in items:
-                export_data.append({
-                    "id": item.id,
-                    "status": item.status,
-                    "recipients_count": len(item.recipients),
-                    "attachments_count": len(item.attachments),
-                    "created_time": item.created_time.isoformat() if item.created_time else None,
-                    "start_time": item.start_time.isoformat() if item.start_time else None,
-                    "end_time": item.end_time.isoformat() if item.end_time else None,
-                    "success_count": item.success_count,
-                    "fail_count": item.fail_count
-                })
-            
-            # 生成文件名
+            # 生成默认文件名
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            data_dir = "data"
-            if not os.path.exists(data_dir):
-                os.makedirs(data_dir)
-            filename = os.path.join(data_dir, f"send_pool_tasks_{timestamp}.json")
+            default_filename = f"邮件发送任务导出_{timestamp}.txt"
+            
+            # 让用户选择保存路径
+            filename = filedialog.asksaveasfilename(
+                title="导出任务记录",
+                initialfile=default_filename,
+                defaultextension=".txt",
+                filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")]
+            )
+            
+            if not filename:
+                return  # 用户取消了保存
+                
+            # 构建导出的文本内容
+            export_content = []
+            export_content.append("=" * 60)
+            export_content.append(f"Casiow 邮件发送任务导出记录")
+            export_content.append(f"导出时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            export_content.append("=" * 60)
+            export_content.append("\n")
+            
+            for item in items:
+                 export_content.append(f"任务 ID: {item.id}")
+                 export_content.append(f"当前状态: {item.status}")
+                 export_content.append(f"收件人数: {len(item.recipients)}")
+                 export_content.append(f"附件数量: {len(item.attachments)}")
+                 export_content.append(f"成功数量: {item.success_count}")
+                 export_content.append(f"失败数量: {item.fail_count}")
+                 
+                 # 时间格式化
+                 created_str = item.created_time.strftime('%Y-%m-%d %H:%M:%S') if item.created_time else "未知"
+                 start_str = item.start_time.strftime('%Y-%m-%d %H:%M:%S') if item.start_time else "未开始"
+                 end_str = item.end_time.strftime('%Y-%m-%d %H:%M:%S') if item.end_time else "未结束"
+                 
+                 export_content.append(f"创建时间: {created_str}")
+                 export_content.append(f"开始时间: {start_str}")
+                 export_content.append(f"结束时间: {end_str}")
+                 
+                 # 附件列表
+                 if item.attachments:
+                     export_content.append("-" * 20)
+                     export_content.append("附件列表:")
+                     for i, attach in enumerate(item.attachments):
+                         export_content.append(f"  {i+1}. {os.path.basename(attach)}")
+                 
+                 # 收件人列表
+                 if item.recipients:
+                     export_content.append("-" * 20)
+                     export_content.append("收件人列表:")
+                     for i, recipient in enumerate(item.recipients):
+                         email = recipient.get('email', '未知')
+                         title = recipient.get('title', '无主题')
+                         export_content.append(f"  {i+1}. {email} (主题: {title})")
+                 
+                 # 如果有错误信息，也导出一部分
+                 if item.error_messages:
+                     export_content.append("-" * 20)
+                     export_content.append("失败记录详情:")
+                     for error in item.error_messages:
+                         err_time = error.get('timestamp', '')
+                         if 'T' in err_time: # 处理 ISO 格式
+                             try:
+                                 dt = datetime.fromisoformat(err_time.replace("Z", "+00:00"))
+                                 err_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+                             except:
+                                 pass
+                         export_content.append(f"  - [{err_time}] {error.get('recipient', '未知')}: {error.get('error', '发送失败')}")
+                 
+                 export_content.append("\n" + "=" * 60 + "\n")
             
             # 写入文件
             with open(filename, 'w', encoding='utf-8') as f:
-                json.dump(export_data, f, ensure_ascii=False, indent=2)
+                f.write("\n".join(export_content))
             
-            messagebox.showinfo("导出成功", f"任务列表已导出到文件: {filename}")
+            messagebox.showinfo("导出成功", f"任务记录已成功导出至:\n{filename}")
             
         except Exception as e:
-            messagebox.showerror("导出失败", f"导出任务列表失败: {e}")
+             messagebox.showerror("导出失败", f"导出任务记录时发生错误: {e}")
 
     def clear_completed_tasks(self):
         """清空已完成的任务"""
@@ -617,7 +670,7 @@ class RecipientInputWindow:
             
             # 添加附件数据
             for attachment in item.attachments:
-                attachments_listbox.insert(tk.END, attachment)
+                attachments_listbox.insert(tk.END, os.path.basename(attachment))
             
             # 错误信息标签页（如果有错误）
             if item.error_messages:
@@ -846,8 +899,10 @@ class RecipientInputWindow:
                     if recipients:  # 只有当分组中有匹配的联系人时才显示该分组
                         group_id = self.contact_tree.insert('', 'end', text=group_name, open=True, tags=('group',))
                         for recipient in recipients:
-                            # 使用content作为备注字段
-                            self.contact_tree.insert(group_id, 'end', text=recipient['email'], values=(recipient['email'], recipient['content']), tags=('recipient',))
+                            # 修复：优先显示 note 字段，如果没有则显示内容
+                            note_val = recipient.get('note', recipient.get('content', ''))
+                            self.contact_tree.insert(group_id, 'end', text=recipient['email'], 
+                                                   values=(recipient['email'], note_val), tags=('recipient',))
         else:
             # 无搜索词时显示所有联系人（按排序顺序）
             for group_name in group_names:
@@ -855,8 +910,10 @@ class RecipientInputWindow:
                     recipients = self.saved_recipients[group_name]
                     group_id = self.contact_tree.insert('', 'end', text=group_name, open=True, tags=('group',))
                     for recipient in recipients:
-                        # 使用content作为备注字段
-                        self.contact_tree.insert(group_id, 'end', text=recipient['email'], values=(recipient['email'], recipient['content']), tags=('recipient',))
+                        # 修复：优先显示 note 字段，如果没有则显示内容
+                        note_val = recipient.get('note', recipient.get('content', ''))
+                        self.contact_tree.insert(group_id, 'end', text=recipient['email'], 
+                                               values=(recipient['email'], note_val), tags=('recipient',))
 
     def on_contact_tree_select(self, event):
         """处理联系人 Treeview 的选择事件"""
@@ -894,23 +951,20 @@ class RecipientInputWindow:
                         parent_id = self.contact_tree.parent(selected_item)
                         group_name = self.contact_tree.item(parent_id, 'text') if parent_id else "未分组"
                         
-                        # 在保存的数据中找到对应的联系人并更新备注
-                        if group_name in self.saved_recipients:
-                            for i, recipient in enumerate(self.saved_recipients[group_name]):
-                                if recipient['email'] == email:
-                                    self.saved_recipients[group_name][i]['content'] = new_note
-                                    self.saved_recipients[group_name][i]['title'] = new_note
-                                    break
-                        
-                        # 保存到文件并刷新显示
-                        self.save_recipient_data()
-                        self.populate_contact_tree()
-                        
-                        # 如果当前选中的联系人就是被修改的联系人，更新输入框
-                        if self.email_var.get() == email:
-                            self.title_var.set(new_note)
-                            self.content_text.delete(1.0, tk.END)
-                            self.content_text.insert(tk.END, new_note)
+                # 在保存的数据中找到对应的联系人并更新备注
+                if group_name in self.saved_recipients:
+                    for i, recipient in enumerate(self.saved_recipients[group_name]):
+                        if recipient['email'] == email:
+                            # 修复：只更新 note 字段，不再触碰 title 和 content
+                            self.saved_recipients[group_name][i]['note'] = new_note
+                            break
+                
+                # 保存到文件并刷新显示
+                self.save_recipient_data()
+                self.populate_contact_tree()
+                
+                # 修复：双击修改备注后，不应清空或修改右侧的主题和内容
+                # 移除之前的自动填充代码
 
     def on_contact_tree_right_click(self, event):
         """处理联系人 Treeview 的右键点击事件，显示右键菜单"""
@@ -973,23 +1027,28 @@ class RecipientInputWindow:
         if target_group not in self.saved_recipients:
             self.saved_recipients[target_group] = []
         
-        # 从源分组移除
+        # 找到原始联系人数据以保留所有字段（包括主题和内容）
+        original_recipient = None
         if source_group in self.saved_recipients:
-            self.saved_recipients[source_group] = [
-                r for r in self.saved_recipients[source_group] 
-                if r['email'] != email
-            ]
+            for r in self.saved_recipients[source_group]:
+                if r['email'] == email:
+                    original_recipient = r.copy()
+                    break
         
-        # 创建新的联系人数据
-        new_recipient = {
-            'email': email,
-            'title': values[1],  # 备注
-            'content': values[1],  # 备注
-            'last_used': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
+        if not original_recipient:
+            return
+
+        # 从源分组移除
+        self.saved_recipients[source_group] = [
+            r for r in self.saved_recipients[source_group] 
+            if r['email'] != email
+        ]
+        
+        # 更新最后使用时间并移动
+        original_recipient['last_used'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         # 添加到目标分组
-        self.saved_recipients[target_group].append(new_recipient)
+        self.saved_recipients[target_group].append(original_recipient)
         
         # 保存并刷新
         self.save_recipient_data()
@@ -1025,6 +1084,69 @@ class RecipientInputWindow:
         self.save_recipient_data()
         self.populate_contact_tree()
         messagebox.showinfo("成功", f"分组已重命名为 '{new_name}'！")
+
+    def on_drag_start(self, event):
+        """开始拖拽"""
+        item = self.contact_tree.identify_row(event.y)
+        if item:
+            # 只有分组节点（没有父节点）可以拖拽排序
+            if self.contact_tree.parent(item) == '':
+                self.drag_data["item"] = item
+                self.drag_data["y"] = event.y
+                self.contact_tree.selection_set(item)
+
+    def on_drag_motion(self, event):
+        """拖拽中，提供视觉反馈"""
+        if self.drag_data["item"]:
+            target_item = self.contact_tree.identify_row(event.y)
+            if target_item and target_item != self.drag_data["item"]:
+                if self.contact_tree.parent(target_item) == '':
+                    # 改变鼠标光标显示可以拖动
+                    self.contact_tree.config(cursor="hand2")
+                    # 选中目标项作为视觉提示
+                    self.contact_tree.selection_set(target_item)
+                else:
+                    self.contact_tree.config(cursor="no")
+            else:
+                self.contact_tree.config(cursor="arrow")
+
+    def on_drag_release(self, event):
+        """释放拖拽，实现排序"""
+        self.contact_tree.config(cursor="") # 恢复光标
+        if not self.drag_data["item"]:
+            return
+
+        target_item = self.contact_tree.identify_row(event.y)
+        source_item = self.drag_data["item"]
+
+        if target_item and target_item != source_item:
+            # 确保目标也是分组节点
+            if self.contact_tree.parent(target_item) == '':
+                # 获取当前所有分组的顺序
+                source_group = self.contact_tree.item(source_item, "text")
+                target_group = self.contact_tree.item(target_item, "text")
+                
+                # 更新 self.saved_recipients 的字典顺序
+                # Python 3.7+ 字典是有序的，我们可以通过重建字典来改变顺序
+                groups = list(self.saved_recipients.keys())
+                source_idx = groups.index(source_group)
+                target_idx = groups.index(target_group)
+                
+                # 移动分组
+                groups.insert(target_idx, groups.pop(source_idx))
+                
+                # 重建有序字典
+                new_saved_recipients = {}
+                for g in groups:
+                    new_saved_recipients[g] = self.saved_recipients[g]
+                
+                self.saved_recipients = new_saved_recipients
+                
+                # 保存并刷新显示
+                self.save_recipient_data()
+                self.populate_contact_tree()
+                
+        self.drag_data = {"item": None, "y": 0}
 
     def on_search_change(self, *args):
         """处理搜索框内容变化事件，实现动态搜索功能"""
@@ -1110,8 +1232,9 @@ class RecipientInputWindow:
         # 添加到"未分组"
         self.saved_recipients["未分组"].append({
             'email': email,
-            'title': note,
-            'content': note,
+            'title': "",  # 修复：不再自动填充备注到主题
+            'content': "",  # 修复：不再自动填充备注到内容
+            'note': note,   # 将备注保存到专门的字段
             'last_used': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
         
